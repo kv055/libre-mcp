@@ -13,6 +13,8 @@ Run:  <bundled-python> uno_worker.py --url "uno:socket,host=127.0.0.1,port=2002;
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 import time
 
@@ -256,6 +258,113 @@ class Worker:
             return sheets.getByIndex(sheet)
         return sheets.getByName(sheet)
 
+    @staticmethod
+    def _collect_text_fonts(xtext, out) -> None:
+        """Add every CharFontName used by an XText's portions to `out`.
+
+        Defensive by design: an audit reports what it can and never fails on
+        one odd shape or paragraph.
+        """
+        try:
+            paras = xtext.createEnumeration()
+        except Exception:
+            return
+        while True:
+            try:
+                if not paras.hasMoreElements():
+                    return
+                para = paras.nextElement()
+            except Exception:
+                return
+            try:
+                portions = para.createEnumeration()
+            except Exception:
+                continue
+            while True:
+                try:
+                    if not portions.hasMoreElements():
+                        break
+                    portion = portions.nextElement()
+                except Exception:
+                    break
+                try:
+                    name = portion.getPropertyValue("CharFontName")
+                except Exception:
+                    continue
+                if name:
+                    out.add(name)
+
+    def _draw_fonts(self, doc, out) -> None:
+        try:
+            pages = doc.getDrawPages()
+        except Exception:
+            return
+        for p in range(pages.getCount()):
+            try:
+                pg = pages.getByIndex(p)
+            except Exception:
+                continue
+            for i in range(pg.getCount()):
+                try:
+                    shape = pg.getByIndex(i)
+                except Exception:
+                    continue
+                self._collect_text_fonts(shape, out)
+
+    def _calc_fonts(self, doc, out) -> None:
+        try:
+            sheets = doc.getSheets()
+        except Exception:
+            return
+        for s in range(sheets.getCount()):
+            try:
+                sheet = sheets.getByIndex(s)
+                cursor = sheet.createCursor()
+                cursor.gotoStartOfUsedArea(False)
+                cursor.gotoEndOfUsedArea(True)
+                addr = cursor.getRangeAddress()
+            except Exception:
+                continue
+            for col in range(addr.StartColumn, addr.EndColumn + 1):
+                for row in range(addr.StartRow, addr.EndRow + 1):
+                    try:
+                        cell = sheet.getCellByPosition(col, row)
+                        name = cell.getPropertyValue("CharFontName")
+                    except Exception:
+                        continue
+                    if name:
+                        out.add(name)
+
+    @staticmethod
+    def _resolve_fontconfig(names):
+        """Map declared families to fontconfig-matched files.
+
+        Returns (resolved, substituted, available). `resolved` maps every name
+        to its matched file (None when unverifiable); `substituted` lists names
+        whose match belongs to a different family — the silent-replacement bug.
+        Where fc-match is unavailable, available is False and both stay empty.
+        """
+        resolved, substituted = {}, []
+        if shutil.which("fc-match") is None:
+            return resolved, substituted, False
+        for name in sorted(names):
+            try:
+                proc = subprocess.run(
+                    ["fc-match", "-f", "%{file}\t%{family}\n", name],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                fields = proc.stdout.split("\t")
+                path = fields[0].strip() or None
+                families = [f.strip().lower() for f in fields[1].split(",")]
+            except Exception:
+                path, families = None, []
+            resolved[name] = path
+            if path is not None and name.lower() not in families:
+                substituted.append(name)
+        return resolved, substituted, True
+
     # -- operations -------------------------------------------------------
     def op_ping(self, args):
         return {"pong": True}
@@ -307,6 +416,27 @@ class Worker:
             "modified": bool(doc.isModified()),
             "rev": self._rev.get(doc_id, 0),
             "seen": self._seen.get(doc_id, 0),
+        }
+
+    def op_document_fonts(self, args):
+        doc = self._doc(args["doc_id"])
+        kind = self._kind_of(doc)
+        found = set()
+        if kind == "writer":
+            try:
+                self._collect_text_fonts(doc.getText(), found)
+            except Exception:
+                pass
+        elif kind in ("draw", "impress"):
+            self._draw_fonts(doc, found)
+        elif kind == "calc":
+            self._calc_fonts(doc, found)
+        resolved, substituted, available = self._resolve_fontconfig(found)
+        return {
+            "declared": sorted(found),
+            "resolved": resolved,
+            "substituted": substituted,
+            "fontconfig": available,
         }
 
     def op_close_document(self, args):
@@ -957,6 +1087,54 @@ class Worker:
         if args.get("font"):
             cur.CharFontName = args["font"]
 
+    def op_draw_audit_overlaps(self, args):
+        page = int(args["page"])
+        pg = self._draw_page(self._doc(args["doc_id"]), page)
+        boxes = []
+        for i in range(pg.getCount()):
+            shape = pg.getByIndex(i)
+            try:
+                text = shape.getString()
+            except Exception:
+                text = ""
+            if not text or not text.strip():
+                continue
+            pos, size = shape.Position, shape.Size
+            boxes.append(
+                (
+                    i,
+                    " ".join(text.split())[:60],
+                    pos.X,
+                    pos.Y,
+                    pos.X + size.Width,
+                    pos.Y + size.Height,
+                )
+            )
+        overlaps = []
+        for a in range(len(boxes)):
+            for b in range(a + 1, len(boxes)):
+                ia, ta, ax0, ay0, ax1, ay1 = boxes[a]
+                ib, tb, bx0, by0, bx1, by1 = boxes[b]
+                x0, y0 = max(ax0, bx0), max(ay0, by0)
+                x1, y1 = min(ax1, bx1), min(ay1, by1)
+                if x1 > x0 and y1 > y0:
+                    overlaps.append(
+                        {
+                            "a": {"index": ia, "text": ta},
+                            "b": {"index": ib, "text": tb},
+                            "x_cm": round(x0 / 1000, 3),
+                            "y_cm": round(y0 / 1000, 3),
+                            "w_cm": round((x1 - x0) / 1000, 3),
+                            "h_cm": round((y1 - y0) / 1000, 3),
+                        }
+                    )
+        return {
+            "page": page,
+            "count": pg.getCount(),
+            "checked": len(boxes),
+            "overlaps": overlaps,
+        }
+
     def op_page_setup(self, args):
         ps = self._page_style(self._doc(args["doc_id"]))
         margin = args.get("margin")
@@ -1169,12 +1347,14 @@ _SAFE_OPS = {
     "open_document",
     "list_documents",
     "document_info",
+    "document_fonts",
     "get_text",
     "read_cells",
     "list_slides",
     "read_slide",
     "draw_list_shapes",
     "draw_get_text",
+    "draw_audit_overlaps",
     "close_document",
     "save_document",
     "export_document",

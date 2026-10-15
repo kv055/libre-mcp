@@ -59,10 +59,12 @@ async def test_lists_tools_over_stdio():
     # a representative tool from each group must be registered
     assert {
         "create_document",
+        "document_fonts",
         "insert_text",
         "set_cells",
         "add_slide",
         "draw_list_shapes",
+        "draw_audit_overlaps",
     } <= names
 
 

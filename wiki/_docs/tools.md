@@ -18,6 +18,7 @@ open until closed.
 | `open_document` | `path` | `{doc_id, kind, path}` |
 | `list_documents` | — | `{documents}` |
 | `document_info` | `doc_id` | `{kind, url, modified, rev, seen}` |
+| `document_fonts` | `doc_id` | `{declared, resolved, substituted, fontconfig}` |
 | `save_document` | `doc_id`, `path?`, `format?` | `{path}` |
 | `export_document` | `doc_id`, `path`, `format?` | `{path, filter}` |
 | `close_document` | `doc_id`, `force?` | `{closed}` (refuses on unsaved changes unless `force`) |
@@ -43,6 +44,7 @@ open until closed.
 | `add_shape` | `doc_id`, `slide`, `x`, `y`, `w`, `h`, `shape?`, `fill?`, `fill2?`, `line?`, `corner?`, `text?` | `{ok}` |
 | `add_image` | `doc_id`, `slide`, `path`, `x`, `y`, `w`, `h` | `{ok}` |
 | `draw_list_shapes` | `doc_id`, `page` | `{page, count, shapes}` |
+| `draw_audit_overlaps` | `doc_id`, `page` | `{page, count, checked, overlaps}` |
 | `draw_get_text` | `doc_id`, `page`, `shape` | `{shape, text}` |
 | `draw_set_text` | `doc_id`, `page`, `shape`, `text`, `size?`, `color?`, `bold?`, `italic?`, `align?`, `valign?`, `font?` | `{shape}` |
 | `draw_delete_shape` | `doc_id`, `page`, `shape` | `{count}` |

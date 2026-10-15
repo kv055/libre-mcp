@@ -24,6 +24,16 @@ def register(mcp: FastMCP) -> None:
         return await get_session().call("draw_list_shapes", doc_id=doc_id, page=page)
 
     @mcp.tool()
+    async def draw_audit_overlaps(doc_id: str, page: int) -> dict:
+        """Find overlapping text shapes on a Draw page.
+
+        Returns {page, count, checked, overlaps: [{a: {index, text}, b: {...},
+        x_cm, y_cm, w_cm, h_cm}]}. Only shapes holding text are compared —
+        intentional overlaps with background art are not reported.
+        """
+        return await get_session().call("draw_audit_overlaps", doc_id=doc_id, page=page)
+
+    @mcp.tool()
     async def draw_get_text(doc_id: str, page: int, shape: int) -> dict:
         """Read one shape's text by 0-based page and shape index.
 

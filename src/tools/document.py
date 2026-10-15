@@ -44,6 +44,19 @@ def register(mcp: FastMCP) -> None:
         return await get_session().call("document_info", doc_id=doc_id)
 
     @mcp.tool()
+    async def document_fonts(doc_id: str) -> dict:
+        """Audit a document's fonts: declared families vs installed ones.
+
+        Returns {declared, resolved, substituted, fontconfig}. `declared`
+        lists every font family the live document uses; `resolved` maps each
+        to its fontconfig-matched file (None when unverifiable);
+        `substituted` lists families the system silently replaces — the usual
+        "wrong font everywhere" bug (install the family and reopen).
+        `fontconfig` is false where the fc-match helper is unavailable.
+        """
+        return await get_session().call("document_fonts", doc_id=doc_id)
+
+    @mcp.tool()
     async def save_document(
         doc_id: str, path: str | None = None, format: str | None = None
     ) -> dict:

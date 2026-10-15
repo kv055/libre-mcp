@@ -22,6 +22,7 @@ Documents
 - `create_document(kind)` — kind: `writer` | `calc` | `impress` | `draw` → `{doc_id, kind}`
 - `open_document(path)` → `{doc_id, kind, path}`
 - `list_documents()` → `{documents}` · `document_info(doc_id)` → `{kind, url, modified, rev, seen}`
+- `document_fonts(doc_id)` → `{declared, resolved, substituted, fontconfig}` — every font family the live doc uses, each mapped to its installed file; `substituted` flags families the system silently replaces (install the family and reopen)
 - `save_document(doc_id, path?, format?)` — save in place, or a copy to `path`
 - `export_document(doc_id, path, format?)` — pdf, docx, xlsx, pptx, csv, odt/ods/odp, html, txt
 - `close_document(doc_id, force?)` — refuses if there are unsaved changes; pass `force` to discard
@@ -63,6 +64,7 @@ CENTIMETRES from the page's top-left; colors hex; font sizes in points. Shapes
 are 0-based `shape` indexes in z-order on a 0-based `page`; deleting shifts
 later indexes — delete in descending order.
 - `draw_list_shapes(doc_id, page)` → `{page, count, shapes}` — `shapes`: `{index, type, x_cm, y_cm, w_cm, h_cm, text}`; `type` text|rect|ellipse|line|image|path|custom|group|…
+- `draw_audit_overlaps(doc_id, page)` → `{page, count, checked, overlaps}` — text-shape pairs whose frames intersect, with the overlap rect in cm; background art is ignored
 - `draw_get_text(doc_id, page, shape)` → `{shape, text}`
 - `draw_set_text(doc_id, page, shape, text, size?, color?, bold?, italic?, align?, valign?, font?)` — replaces the shape's text runs; omitted style keeps current formatting; `align` left|center|right|justify; `valign` top|center|bottom
 - `draw_delete_shape(doc_id, page, shape)` → `{count}`
@@ -116,6 +118,16 @@ save_document     {"doc_id": "doc-1"}
 ```
 List shapes first to learn indexes; when removing several lines, delete in
 descending index order, then move the shapes below up to close the gap.
+
+Diagnose a Draw CV's fonts + layout
+```
+open_document       {"path": "/abs/path/cv.odg"}
+document_fonts      {"doc_id": "doc-1"}
+draw_audit_overlaps {"doc_id": "doc-1", "page": 0}
+```
+Run the font audit first: a non-empty `substituted` list means the system is
+silently replacing typefaces (install them and reopen). Then fix reported
+overlaps with `draw_move_shape`, re-audit, and export.
 
 ## Engaging presentations (patterns)
 

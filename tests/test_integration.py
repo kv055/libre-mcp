@@ -109,3 +109,80 @@ async def test_draw_text_edit(session):
     await session.call("draw_delete_shape", doc_id=doc_id, page=0, shape=idx)
     after = (await session.call("draw_list_shapes", doc_id=doc_id, page=0))["count"]
     assert after == before - 1
+
+
+@requires_lo
+async def test_document_fonts(session):
+    doc = await session.call("create_document", kind="writer")
+    doc_id = doc["doc_id"]
+    await session.call("insert_text", doc_id=doc_id, text="Hello fonts")
+    out = await session.call("document_fonts", doc_id=doc_id)
+    assert out["declared"], "fresh writer doc should declare its default font"
+    assert "fontconfig" in out
+    if out["fontconfig"]:
+        assert set(out["resolved"]) == set(out["declared"])
+
+    draw = await session.call("create_document", kind="draw")
+    draw_id = draw["doc_id"]
+    await session.call(
+        "draw_add_textbox",
+        doc_id=draw_id,
+        page=0,
+        text="Bogus family",
+        x_cm=2.0,
+        y_cm=2.0,
+        w_cm=8.0,
+        h_cm=1.0,
+        font="NoSuchFontXYZ",
+    )
+    out = await session.call("document_fonts", doc_id=draw_id)
+    assert "NoSuchFontXYZ" in out["declared"]
+    if out["fontconfig"]:
+        assert "NoSuchFontXYZ" in out["substituted"]
+
+
+@requires_lo
+async def test_draw_audit_overlaps(session):
+    doc = await session.call("create_document", kind="draw")
+    doc_id = doc["doc_id"]
+    a = await session.call(
+        "draw_add_textbox",
+        doc_id=doc_id,
+        page=0,
+        text="Alpha box",
+        x_cm=2.0,
+        y_cm=2.0,
+        w_cm=6.0,
+        h_cm=2.0,
+    )
+    b = await session.call(
+        "draw_add_textbox",
+        doc_id=doc_id,
+        page=0,
+        text="Beta box",
+        x_cm=4.0,
+        y_cm=3.0,
+        w_cm=6.0,
+        h_cm=2.0,
+    )
+    c = await session.call(
+        "draw_add_textbox",
+        doc_id=doc_id,
+        page=0,
+        text="Far away",
+        x_cm=20.0,
+        y_cm=20.0,
+        w_cm=4.0,
+        h_cm=2.0,
+    )
+    out = await session.call("draw_audit_overlaps", doc_id=doc_id, page=0)
+    pairs = {(o["a"]["index"], o["b"]["index"]) for o in out["overlaps"]}
+    assert (a["index"], b["index"]) in pairs
+    assert all(c["index"] not in pair for pair in pairs)
+    ov = next(
+        o
+        for o in out["overlaps"]
+        if (o["a"]["index"], o["b"]["index"]) == (a["index"], b["index"])
+    )
+    assert ov["w_cm"] == pytest.approx(4.0)
+    assert ov["h_cm"] == pytest.approx(1.0)

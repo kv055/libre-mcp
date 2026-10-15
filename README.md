@@ -85,6 +85,7 @@ and save it as `.pptx`); documents stay open (referenced by `doc_id`) until clos
 | `create_document(kind)` | New writer/calc/impress/draw doc → `doc_id` |
 | `open_document(path)` | Open a file → `doc_id` |
 | `list_documents()` / `document_info(doc_id)` | Inspect open docs (`modified`, `rev`) |
+| `document_fonts(doc_id)` | Audit fonts: declared families vs installed (`substituted` flags silent replacements) |
 | `save_document(doc_id, path?, format?)` | Save in place or to a path |
 | `export_document(doc_id, path, format?)` | Export (pdf, docx, xlsx, csv, …) |
 | `close_document(doc_id, force?)` | Close a doc (refuses on unsaved changes; `force` discards) |
@@ -109,6 +110,7 @@ and save it as `.pptx`); documents stay open (referenced by `doc_id`) until clos
 | `add_shape(doc_id, slide, x, y, w, h, shape, fill, …)` | Rect/round/ellipse/line (+ text) |
 | `add_image(doc_id, slide, path, x, y, w, h)` | Place an image on a slide |
 | `draw_list_shapes(doc_id, page)` | List a Draw page's shapes: index, type, cm geometry, text |
+| `draw_audit_overlaps(doc_id, page)` | Report overlapping text shapes with overlap rects |
 | `draw_get_text(doc_id, page, shape)` | Read one shape's text |
 | `draw_set_text(doc_id, page, shape, text, …)` | Replace a shape's text (keeps style unless restyled) |
 | `draw_delete_shape(doc_id, page, shape)` | Delete a shape (later indices shift down) |
