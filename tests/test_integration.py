@@ -186,3 +186,76 @@ async def test_draw_audit_overlaps(session):
     )
     assert ov["w_cm"] == pytest.approx(4.0)
     assert ov["h_cm"] == pytest.approx(1.0)
+
+
+@requires_lo
+async def test_set_column_width_wide_and_invalid(session):
+    from src.office.worker import WorkerError
+
+    doc = await session.call("create_document", kind="calc")
+    doc_id = doc["doc_id"]
+    await session.call("set_column_width", doc_id=doc_id, columns="AA:AB", width_cm=3.0)
+    with pytest.raises(WorkerError, match="invalid column"):
+        await session.call(
+            "set_column_width", doc_id=doc_id, columns="A1", width_cm=3.0
+        )
+
+
+@requires_lo
+async def test_insert_table_wide(session):
+    doc = await session.call("create_document", kind="writer")
+    doc_id = doc["doc_id"]
+    row = [f"c{i}" for i in range(30)]
+    out = await session.call("insert_table", doc_id=doc_id, rows=[row], header=False)
+    assert out == {"ok": True}
+
+
+@requires_lo
+async def test_read_cells_guards_huge_range(session):
+    from src.office.worker import WorkerError
+
+    doc = await session.call("create_document", kind="calc")
+    doc_id = doc["doc_id"]
+    await session.call("set_cells", doc_id=doc_id, cells=[{"cell": "A1", "value": 1}])
+    with pytest.raises(WorkerError, match="too large"):
+        await session.call("read_cells", doc_id=doc_id, range="A1:XFD1048576")
+    out = await session.call("read_cells", doc_id=doc_id, range="A1:A1")
+    assert out["values"][0][0] == 1.0
+
+
+@requires_lo
+async def test_insert_image_missing_file(session):
+    from src.office.worker import WorkerError
+
+    doc = await session.call("create_document", kind="writer")
+    doc_id = doc["doc_id"]
+    with pytest.raises(WorkerError, match="not found"):
+        await session.call("insert_image", doc_id=doc_id, path="/no/such/image.png")
+
+
+@requires_lo
+async def test_session_retry_skips_doomed_doc_calls(session):
+    from unittest.mock import AsyncMock, patch
+
+    from src.office.worker import WorkerClient, WorkerError
+
+    doc = await session.call("create_document", kind="writer")
+    doc_id = doc["doc_id"]
+    fatal = WorkerError("worker", "boom", fatal=True)
+    # Doc-less ops restart and retry transparently (fatal, then pong during
+    # the restart handshake, then the retried op).
+    with patch.object(
+        WorkerClient,
+        "call",
+        new=AsyncMock(side_effect=[fatal, {"pong": True}, {"doc_id": "doc-9"}]),
+    ) as mocked:
+        assert await session.call("create_document", kind="writer") == {
+            "doc_id": "doc-9"
+        }
+        assert mocked.call_count == 3
+    # Doc ops surface the original fatal error instead of retrying against
+    # dropped doc handles.
+    with patch.object(WorkerClient, "call", new=AsyncMock(side_effect=fatal)) as mocked:
+        with pytest.raises(WorkerError, match="boom"):
+            await session.call("get_text", doc_id=doc_id)
+        assert mocked.call_count == 1

@@ -33,12 +33,14 @@ class WorkerClient:
         script: str,
         url: str,
         connect_timeout: float = 30.0,
+        op_timeout: float = 120.0,
         visible: bool = False,
     ) -> None:
         self.python_path = python_path
         self.script = script
         self.url = url
         self.connect_timeout = connect_timeout
+        self.op_timeout = op_timeout
         self.visible = visible
         self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
@@ -88,10 +90,26 @@ class WorkerClient:
             req_id = self._next_id
             payload = json.dumps({"id": req_id, "op": op, "args": args}) + "\n"
             assert self._proc.stdin and self._proc.stdout
-            self._proc.stdin.write(payload.encode())
-            await self._proc.stdin.drain()
-
-            raw = await self._proc.stdout.readline()
+            try:
+                self._proc.stdin.write(payload.encode())
+                await self._proc.stdin.drain()
+                raw = await asyncio.wait_for(
+                    self._proc.stdout.readline(), timeout=self.op_timeout
+                )
+            except (BrokenPipeError, ConnectionResetError) as e:
+                raise WorkerError(
+                    "worker", f"worker unreachable: {e}", fatal=True
+                ) from e
+            except asyncio.TimeoutError:
+                # A hung op wedges the strictly sequential protocol: any later
+                # response would belong to this request. Kill the worker so the
+                # session rebuilds from a known-good state.
+                await self._kill_locked()
+                raise WorkerError(
+                    "worker",
+                    f"op {op!r} timed out after {self.op_timeout:g}s; worker killed",
+                    fatal=True,
+                )
             if not raw:
                 rc = self._proc.returncode
                 raise WorkerError("worker", f"worker closed (rc={rc})", fatal=True)
@@ -105,6 +123,16 @@ class WorkerClient:
                 fatal=bool(err.get("fatal")),
             )
         return resp.get("result", {})
+
+    async def _kill_locked(self) -> None:
+        proc = self._proc
+        if proc is None or proc.returncode is not None:
+            return
+        try:
+            proc.kill()
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except Exception:
+            pass
 
     async def stop(self) -> None:
         proc = self._proc
@@ -130,3 +158,8 @@ class WorkerClient:
                 proc.kill()
         if self._stderr_task:
             self._stderr_task.cancel()
+            try:
+                await self._stderr_task
+            except asyncio.CancelledError:
+                pass
+            self._stderr_task = None

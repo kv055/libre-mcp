@@ -94,7 +94,7 @@ def self_update() -> int:
             print(f"download failed: {e}", file=sys.stderr)
             return 1
         with tarfile.open(archive) as tf:
-            tf.extractall(tmp)
+            tf.extractall(tmp, filter="data")
         new_bin = next(
             (
                 os.path.join(root, "libre-mcp")

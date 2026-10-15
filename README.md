@@ -100,6 +100,9 @@ and save it as `.pptx`); documents stay open (referenced by `doc_id`) until clos
 | `add_page_box(doc_id, x, y, w, h, text?, fill?, …)` | Page-anchored band / callout |
 | `set_cells(doc_id, cells, sheet?)` | Write Calc cells/formulas |
 | `read_cells(doc_id, range, sheet?)` | Read a Calc range |
+| `add_sheet(doc_id, name)` | Append a Calc sheet |
+| `style_cells(doc_id, range, ...)` | Style a Calc range (only passed args apply) |
+| `set_column_width(doc_id, columns, width_cm)` | Set Calc column width(s) |
 | `add_slide(doc_id, layout?)` | Append an Impress slide |
 | `set_slide_content(doc_id, index, title?, bullets?)` | Set a slide's title/bullets |
 | `list_slides(doc_id)` / `delete_slide(doc_id, index)` | Inspect / remove slides |

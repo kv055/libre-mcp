@@ -68,6 +68,7 @@ class SofficeProcess:
         self._proc = subprocess.Popen(
             args, stdout=logf, stderr=logf, stdin=subprocess.DEVNULL
         )
+        logf.close()  # the child has its own copy; don't leak the fd
 
         # Brief settle to catch immediate launch/config failures. True readiness
         # is gated by the worker's connect-retry loop (bounded by startup_timeout).
@@ -89,6 +90,10 @@ class SofficeProcess:
                 await asyncio.get_event_loop().run_in_executor(None, proc.wait, 10)
             except Exception:
                 proc.kill()
+                try:
+                    await asyncio.get_event_loop().run_in_executor(None, proc.wait, 10)
+                except Exception:
+                    pass
         self._proc = None
         if not self.keep_profile and os.path.isdir(self.profile):
             shutil.rmtree(self.profile, ignore_errors=True)

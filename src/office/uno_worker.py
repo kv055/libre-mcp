@@ -13,6 +13,7 @@ Run:  <bundled-python> uno_worker.py --url "uno:socket,host=127.0.0.1,port=2002;
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -104,17 +105,48 @@ _DRAW_TYPES = {
 
 
 def _color(value):
-    """Accept '#RRGGBB' (or an int) and return an int RGB."""
+    """Accept '#RRGGBB' (or 3-digit '#RGB', or an int) and return an int RGB."""
     if value is None:
         return None
-    if isinstance(value, int):
+    if isinstance(value, int) and not isinstance(value, bool):
+        if not 0 <= value <= 0xFFFFFF:
+            raise ValueError(f"bad color int: {value!r} (want 0..0xFFFFFF)")
         return value
-    return int(str(value).lstrip("#"), 16)
+    text = str(value).strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(ch * 2 for ch in text)
+    if len(text) != 6:
+        raise ValueError(f"bad color: {value!r} (want '#RRGGBB', '#RGB', or int)")
+    try:
+        return int(text, 16)
+    except ValueError:
+        raise ValueError(
+            f"bad color: {value!r} (want '#RRGGBB', '#RGB', or int)"
+        ) from None
 
 
 def _cm(value):
     """Centimetres -> 1/100 mm (UNO's metric unit)."""
-    return int(float(value) * 1000)
+    return int(round(float(value) * 1000))
+
+
+def _col_to_index(spec) -> int:
+    """Spreadsheet column letters -> 0-based index (A=0, Z=25, AA=26, ...)."""
+    text = str(spec).strip().upper()
+    if not text or not text.isalpha() or not text.isascii():
+        raise ValueError(f"invalid column: {spec!r}")
+    index = 0
+    for ch in text:
+        index = index * 26 + (ord(ch) - 64)
+    index -= 1
+    if index > 16383:
+        raise ValueError(f"invalid column: {spec!r} (beyond XFD)")
+    return index
+
+
+# Largest cell range a single read_cells call will materialize. Whole-sheet
+# ranges would hang or OOM building the JSON payload; narrow the range instead.
+_MAX_READ_CELLS = 100000
 
 
 # Worker-internal default colors. Tool-facing defaults live in
@@ -503,8 +535,11 @@ class Worker:
         doc = self._doc(args["doc_id"])
         sheet = self._sheet(doc, args.get("sheet"))
         rng = sheet.getCellRangeByName(args["range"])
+        addr = rng.getRangeAddress()
+        n = (addr.EndColumn - addr.StartColumn + 1) * (addr.EndRow - addr.StartRow + 1)
+        if n > _MAX_READ_CELLS:
+            raise ValueError(f"range too large: {n} cells (max {_MAX_READ_CELLS})")
         if args.get("formula"):
-            addr = rng.getRangeAddress()
             data = [
                 [
                     sheet.getCellByPosition(c, r).getFormula()
@@ -542,10 +577,11 @@ class Worker:
             from com.sun.star.awt.FontWeight import BOLD, NORMAL
 
             rng.CharWeight = BOLD if args["bold"] else NORMAL
-        if args.get("italic"):
+        if args.get("italic") is not None:
             from com.sun.star.awt.FontSlant import ITALIC
+            from com.sun.star.awt.FontSlant import NONE as SLANT_NONE
 
-            rng.CharPosture = ITALIC
+            rng.CharPosture = ITALIC if args["italic"] else SLANT_NONE
         if args.get("color") is not None:
             rng.CharColor = _color(args["color"])
         if args.get("size"):
@@ -568,12 +604,19 @@ class Worker:
         doc = self._doc(args["doc_id"])
         cols = self._sheet(doc, args.get("sheet")).getColumns()
         width = _cm(args["width_cm"])
-        spec = str(args["columns"]).upper()
-        if ":" in spec:
-            a, b = spec.split(":")
-            start, end = ord(a) - 65, ord(b) - 65
-        else:
-            start = end = ord(spec) - 65
+        spec = str(args["columns"])
+        parts = spec.split(":")
+        try:
+            if len(parts) == 1:
+                start = end = _col_to_index(parts[0])
+            elif len(parts) == 2:
+                start, end = _col_to_index(parts[0]), _col_to_index(parts[1])
+            else:
+                raise ValueError(spec)
+        except ValueError:
+            raise ValueError(f"invalid columns: {spec!r} (use A, AB, or A:E)") from None
+        if start > end:
+            raise ValueError(f"invalid columns: {spec!r} (reversed span)")
         for i in range(start, end + 1):
             cols.getByIndex(i).Width = width
         return {"ok": True}
@@ -1065,6 +1108,8 @@ class Worker:
         return doc.getStyleFamilies().getByName("PageStyles").getByName("Standard")
 
     def _graphic(self, path):
+        if not path or not os.path.isfile(path):
+            raise ValueError(f"image not found: {path}")
         provider = self.ctx.ServiceManager.createInstanceWithContext(
             "com.sun.star.graphic.GraphicProvider", self.ctx
         )
@@ -1196,6 +1241,8 @@ class Worker:
         doc = self._doc(args["doc_id"])
         text = doc.getText()
         rows = args["rows"]
+        if not rows:
+            raise ValueError("rows must not be empty")
         nrows, ncols = len(rows), max(len(r) for r in rows)
         table = doc.createInstance("com.sun.star.text.TextTable")
         table.initialize(nrows, ncols)
@@ -1210,7 +1257,9 @@ class Worker:
 
         for r, row in enumerate(rows):
             for c in range(ncols):
-                cell = table.getCellByName(f"{chr(65 + c)}{r + 1}")
+                # NOTE: getCellByName only understands single-letter columns
+                # ("AA1" returns None); positions work for any width.
+                cell = table.getCellByPosition(c, r)
                 val = row[c] if c < len(row) else ""
                 ct = cell.getText()
                 ccur = ct.createTextCursor()
@@ -1427,8 +1476,7 @@ def serve(worker: Worker) -> None:
                             "warning": (
                                 "document changed since your last edit (an "
                                 "external/human edit). Re-read it (e.g. get_text) "
-                                "to pick up the change, then retry — or pass "
-                                "force=true to edit anyway."
+                                "to pick up the change, then retry."
                             ),
                             "rev": worker._rev.get(doc_id, 0),
                             "seen": worker._seen.get(doc_id, 0),

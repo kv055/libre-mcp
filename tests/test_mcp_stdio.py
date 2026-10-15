@@ -68,6 +68,19 @@ async def test_lists_tools_over_stdio():
     } <= names
 
 
+async def test_style_cells_optionals_have_no_eager_defaults():
+    # style_cells must only apply what the caller passes: color/italic default
+    # to null so untouched formatting survives (no silent reset to INK).
+    async with stdio_client(_server_params()) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            schema = next(t for t in tools.tools if t.name == "style_cells").inputSchema
+    props = schema.get("properties", {})
+    assert props["color"].get("default") is None
+    assert props["italic"].get("default") is None
+
+
 @requires_lo
 async def test_tool_roundtrip_over_stdio():
     async with stdio_client(_server_params()) as (read, write):

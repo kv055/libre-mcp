@@ -62,6 +62,7 @@ class OfficeSession:
             discovery.worker_script(),
             soffice.url,
             connect_timeout=self.config.startup_timeout,
+            op_timeout=self.config.op_timeout,
             visible=self.config.live,
         )
         try:
@@ -87,7 +88,10 @@ class OfficeSession:
         try:
             return await self._worker.call(op, **args)
         except WorkerError as e:
-            if not e.fatal:
+            if not e.fatal or "doc_id" in args:
+                # A restart drops all doc handles, so retrying a doc op could
+                # only fail with "unknown doc_id" and mask the real error.
+                # Only doc-less ops (create/open/ping) are safe to retry.
                 raise
             log.warning("fatal worker error (%s); restarting session and retrying", e)
             async with self._lock:
@@ -115,6 +119,8 @@ class OfficeSession:
                 discovery.worker_script(),
                 self._soffice.url,
                 connect_timeout=self.config.startup_timeout,
+                op_timeout=self.config.op_timeout,
+                visible=self.config.live,
             )
             try:
                 await worker.start()

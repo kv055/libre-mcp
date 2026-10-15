@@ -44,6 +44,7 @@ in points, spacing/margins in cm, colors hex.
 Calc
 - `set_cells(doc_id, cells, sheet?)` — `cells`: `[{cell, value?|formula?}]`; a `formula` starts with `=`
 - `read_cells(doc_id, range, sheet?)` → `{values: [[...]]}`
+- `add_sheet(doc_id, name, index?)` · `style_cells(doc_id, range, ...)` (only passed args apply) · `set_column_width(doc_id, columns, width_cm, sheet?)` (`columns`: `A` or `A:E`)
 
 Impress — basic
 - `add_slide(doc_id, layout?)` — a new deck already has slide `0` → `{index, count}`

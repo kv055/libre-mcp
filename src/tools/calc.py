@@ -3,7 +3,6 @@
 from mcp.server.fastmcp import FastMCP
 
 from src.office.session import get_session
-from src.tools._defaults import INK
 
 
 def register(mcp: FastMCP) -> None:
@@ -54,8 +53,8 @@ def register(mcp: FastMCP) -> None:
         range: str,
         sheet: str | int | None = None,
         bold: bool | None = None,
-        italic: bool = False,
-        color: str = INK,
+        italic: bool | None = None,
+        color: str | None = None,
         fill: str | None = None,
         size: float | None = None,
         font: str | None = None,

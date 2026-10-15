@@ -33,6 +33,9 @@ open until closed.
 | `add_page_box` | `doc_id`, `x`, `y`, `w`, `h`, `text?`, `fill?`, `color?`, `size?`, `bold?`, `align?`, `font?`, `pad?` | `{ok}` |
 | `set_cells` | `doc_id`, `cells`, `sheet?` | `{written}` |
 | `read_cells` | `doc_id`, `range`, `sheet?` | `{values}` |
+| `add_sheet` | `doc_id`, `name`, `index?` | `{ok}` |
+| `style_cells` | `doc_id`, `range`, `sheet?`, `bold?`, `italic?`, `size?`, `color?`, `fill?`, `align?`, `number_format?` | `{ok}` |
+| `set_column_width` | `doc_id`, `columns`, `width_cm`, `sheet?` | `{ok}` |
 | `add_slide` | `doc_id`, `layout?` | `{index, count}` |
 | `set_slide_content` | `doc_id`, `index`, `title?`, `bullets?` | `{index}` |
 | `list_slides` | `doc_id` | `{slides, count}` |
