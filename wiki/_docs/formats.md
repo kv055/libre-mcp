@@ -9,7 +9,8 @@ What libre-mcp can do with each file format, by area. Legend: **✓** supported 
 **~** partial · **—** not yet.
 
 - **Read** — open the file and pull content back through a tool
-  (`get_text` for Writer, `read_cells` for Calc, `read_slide` for Impress).
+  (`get_text` for Writer, `read_cells` for Calc, `read_slide` for Impress,
+  `draw_list_shapes` for Draw).
 - **Create** — make a new document and `export_document` it to this format.
 - **Edit** — open an existing file and change it with the area's tools, then save.
 
@@ -60,10 +61,11 @@ or colors. Editing covers slides, text, shapes, gradients, and images.
 
 | Format | MIME type | Read | Create | Edit |
 |--------|-----------|:----:|:------:|:----:|
-| ODG (.odg) | `application/vnd.oasis.opendocument.graphics` | — | ~ | — |
+| ODG (.odg) | `application/vnd.oasis.opendocument.graphics` | ✓ | ✓ | ✓ |
 
-Draw documents can be created and exported, but there are no dedicated Draw
-editing or reading tools yet (build visuals as Impress slides instead).
+`draw_list_shapes` returns every shape on a page with its type, centimetre
+geometry, and text; editing covers shape text, position, deletion, and new
+text boxes — enough to revise designed documents like CVs in place.
 
 ## PDF — output / interchange
 
@@ -71,9 +73,9 @@ editing or reading tools yet (build visuals as Impress slides instead).
 |--------|-----------|:----:|:------:|:----:|
 | PDF (.pdf) | `application/pdf` | — | ✓ (export) | — |
 
-PDF is an **output** format: any Writer, Calc, or Impress document exports to it.
-libre-mcp does not extract text from or edit existing PDFs (opening one imports it
-into Draw, lossily).
+PDF is an **output** format: any Writer, Calc, Impress, or Draw document exports
+to it. libre-mcp does not extract text from or edit existing PDFs (opening one
+imports it into Draw, lossily).
 
 ## Beyond these
 

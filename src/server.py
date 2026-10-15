@@ -15,20 +15,20 @@ from src.config import Config
 from src.log import get_logger
 from src.office import discovery
 from src.office.session import get_session
-from src.tools import calc, document, impress, writer
+from src.tools import calc, document, draw, impress, writer
 
 log = get_logger(__name__)
 
-INSTRUCTIONS = """Control LibreOffice (Writer, Calc, Impress) over UNO.
+INSTRUCTIONS = """Control LibreOffice (Writer, Calc, Impress, Draw) over UNO.
 
 Typical flow: create_document or open_document to get a doc_id, edit with the
-writer/calc/impress tools, then save_document / export_document. Documents
+writer/calc/impress/draw tools, then save_document / export_document. Documents
 persist between tool calls until close_document. LibreOffice starts on first use.
 """
 
 # Tool groups, in registration order. Editing one of these files hot-reloads the
 # tool surface in debug mode (see _reload_tools).
-_TOOL_MODULES = (document, writer, calc, impress)
+_TOOL_MODULES = (document, writer, calc, impress, draw)
 
 # Captured by _DevFastMCP on each tool call so the dev watcher (a background task,
 # with no request context of its own) can push tools/list_changed to the client.

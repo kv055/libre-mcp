@@ -79,6 +79,27 @@ _SHAPES = {
     "text": "com.sun.star.drawing.TextShape",
 }
 
+# Service-name suffix -> short shape type reported by draw_list_shapes.
+_DRAW_TYPES = {
+    "TextShape": "text",
+    "TitleTextShape": "text",
+    "OutlinerShape": "text",
+    "RectangleShape": "rect",
+    "EllipseShape": "ellipse",
+    "LineShape": "line",
+    "GraphicObjectShape": "image",
+    "PolygonShape": "path",
+    "PolyPolygonShape": "path",
+    "PolyLineShape": "path",
+    "PathShape": "path",
+    "CustomShape": "custom",
+    "GroupShape": "group",
+    "MeasureShape": "measure",
+    "OLE2Shape": "ole",
+    "FrameShape": "frame",
+    "MediaShape": "media",
+}
+
 
 def _color(value):
     """Accept '#RRGGBB' (or an int) and return an int RGB."""
@@ -702,6 +723,213 @@ class Worker:
         shape.Graphic = provider.queryGraphic((prop,))
         return {"ok": True}
 
+    # draw ----------------------------------------------------------------
+    # Text-first editing for Draw pages (CVs, diagrams, posters). Positions and
+    # sizes are centimetres; colors are hex; font sizes are points. Shapes are
+    # addressed by 0-based index in z-order; deleting shifts later indices, so
+    # remove several in descending index order.
+    def _draw_page(self, doc, page):
+        pages = doc.getDrawPages()
+        page = int(page)
+        if page < 0 or page >= pages.getCount():
+            raise IndexError(f"no page {page} (has {pages.getCount()})")
+        return pages.getByIndex(page)
+
+    def _draw_shape(self, doc, page, index):
+        pg = self._draw_page(doc, page)
+        index = int(index)
+        if index < 0 or index >= pg.getCount():
+            raise IndexError(f"no shape {index} on page {page} (has {pg.getCount()})")
+        return pg.getByIndex(index)
+
+    @staticmethod
+    def _shape_type(shape):
+        try:
+            names = list(shape.SupportedServiceNames)
+        except Exception:
+            return "shape"
+        for name in names:
+            short = _DRAW_TYPES.get(name.rsplit(".", 1)[-1])
+            if short is not None:
+                return short
+        return "shape"
+
+    def op_draw_list_shapes(self, args):
+        page = int(args["page"])
+        pg = self._draw_page(self._doc(args["doc_id"]), page)
+        out = []
+        for i in range(pg.getCount()):
+            shape = pg.getByIndex(i)
+            try:
+                text = shape.getString()
+            except Exception:
+                text = ""
+            pos, size = shape.Position, shape.Size
+            out.append(
+                {
+                    "index": i,
+                    "type": self._shape_type(shape),
+                    "x_cm": round(pos.X / 1000, 3),
+                    "y_cm": round(pos.Y / 1000, 3),
+                    "w_cm": round(size.Width / 1000, 3),
+                    "h_cm": round(size.Height / 1000, 3),
+                    "text": text,
+                }
+            )
+        return {"page": page, "count": pg.getCount(), "shapes": out}
+
+    def op_draw_get_text(self, args):
+        doc = self._doc(args["doc_id"])
+        index = int(args["shape"])
+        shape = self._draw_shape(doc, args["page"], index)
+        try:
+            text = shape.getString()
+        except Exception:
+            text = ""
+        return {"shape": index, "text": text}
+
+    def op_draw_set_text(self, args):
+        doc = self._doc(args["doc_id"])
+        index = int(args["shape"])
+        shape = self._draw_shape(doc, args["page"], index)
+        try:
+            t = shape.getText()
+        except Exception:
+            raise ValueError(
+                f"shape {index} is {self._shape_type(shape)}, has no editable text"
+            )
+        # Snapshot the current formatting so style options left out are kept
+        # rather than reset when the string (and its runs) is replaced.
+        snap = {}
+        try:
+            probe = t.createTextCursor()
+            probe.gotoStart(False)
+            probe.gotoEnd(True)
+            for key in (
+                "CharHeight",
+                "CharColor",
+                "CharWeight",
+                "CharPosture",
+                "CharFontName",
+                "ParaAdjust",
+            ):
+                try:
+                    snap[key] = probe.getPropertyValue(key)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        t.setString(str(args["text"]))
+        cur = t.createTextCursor()
+        cur.gotoStart(False)
+        cur.gotoEnd(True)
+        style = dict(snap)
+        if args.get("size"):
+            style["CharHeight"] = float(args["size"])
+        if args.get("color") is not None:
+            style["CharColor"] = _color(args["color"])
+        if args.get("bold") is not None:
+            from com.sun.star.awt.FontWeight import BOLD, NORMAL
+
+            style["CharWeight"] = BOLD if args["bold"] else NORMAL
+        if args.get("italic") is not None:
+            from com.sun.star.awt.FontSlant import ITALIC
+            from com.sun.star.awt.FontSlant import NONE as SLANT_NONE
+
+            style["CharPosture"] = ITALIC if args["italic"] else SLANT_NONE
+        if args.get("font"):
+            style["CharFontName"] = args["font"]
+        if args.get("align"):
+            from com.sun.star.style.ParagraphAdjust import (
+                BLOCK,
+                CENTER,
+                LEFT,
+                RIGHT,
+            )
+
+            style["ParaAdjust"] = {
+                "left": LEFT,
+                "center": CENTER,
+                "right": RIGHT,
+                "justify": BLOCK,
+            }.get(args["align"], LEFT)
+        for key, value in style.items():
+            try:
+                cur.setPropertyValue(key, value)
+            except Exception:
+                pass
+        if args.get("valign"):
+            from com.sun.star.drawing.TextVerticalAdjust import BOTTOM
+            from com.sun.star.drawing.TextVerticalAdjust import CENTER as VCENTER
+            from com.sun.star.drawing.TextVerticalAdjust import TOP
+
+            try:
+                shape.TextVerticalAdjust = {
+                    "top": TOP,
+                    "center": VCENTER,
+                    "bottom": BOTTOM,
+                }.get(args["valign"], TOP)
+            except Exception:
+                pass
+        return {"shape": index}
+
+    def op_draw_delete_shape(self, args):
+        doc = self._doc(args["doc_id"])
+        page = int(args["page"])
+        shape = self._draw_shape(doc, page, args["shape"])
+        pg = doc.getDrawPages().getByIndex(page)
+        pg.remove(shape)
+        return {"count": pg.getCount()}
+
+    def op_draw_move_shape(self, args):
+        from com.sun.star.awt import Point
+
+        doc = self._doc(args["doc_id"])
+        index = int(args["shape"])
+        shape = self._draw_shape(doc, args["page"], index)
+        pos = shape.Position
+        shape.Position = Point(
+            pos.X + _cm(args.get("dx_cm", 0)), pos.Y + _cm(args.get("dy_cm", 0))
+        )
+        pos = shape.Position
+        return {
+            "shape": index,
+            "x_cm": round(pos.X / 1000, 3),
+            "y_cm": round(pos.Y / 1000, 3),
+        }
+
+    def op_draw_add_textbox(self, args):
+        from com.sun.star.awt import Point, Size
+        from com.sun.star.drawing.FillStyle import NONE as FILL_NONE
+        from com.sun.star.drawing.LineStyle import NONE as LINE_NONE
+
+        doc = self._doc(args["doc_id"])
+        pg = self._draw_page(doc, args["page"])
+        shape = doc.createInstance("com.sun.star.drawing.TextShape")
+        pg.add(shape)
+        shape.Position = Point(_cm(args["x_cm"]), _cm(args["y_cm"]))
+        shape.Size = Size(_cm(args["w_cm"]), _cm(args["h_cm"]))
+        shape.FillStyle = FILL_NONE
+        shape.LineStyle = LINE_NONE
+        try:
+            shape.TextAutoGrowHeight = False
+            shape.TextAutoGrowWidth = False
+            shape.TextWordWrap = True
+        except Exception:
+            pass
+        self._style_text(
+            shape,
+            args["text"],
+            args.get("color"),
+            args.get("size", 11),
+            args.get("bold", False),
+            args.get("italic", False),
+            args.get("align", "left"),
+            args.get("valign", "top"),
+            args.get("font"),
+        )
+        return {"index": pg.getCount() - 1}
+
     # writer: rich documents -------------------------------------------
     def _page_style(self, doc):
         return doc.getStyleFamilies().getByName("PageStyles").getByName("Standard")
@@ -945,6 +1173,8 @@ _SAFE_OPS = {
     "read_cells",
     "list_slides",
     "read_slide",
+    "draw_list_shapes",
+    "draw_get_text",
     "close_document",
     "save_document",
     "export_document",

@@ -70,3 +70,42 @@ async def test_calc_formula(session):
     )
     out = await session.call("read_cells", doc_id=doc_id, range="A3:A3")
     assert out["values"][0][0] == 42.0
+
+
+@requires_lo
+async def test_draw_text_edit(session):
+    doc = await session.call("create_document", kind="draw")
+    doc_id = doc["doc_id"]
+    added = await session.call(
+        "draw_add_textbox",
+        doc_id=doc_id,
+        page=0,
+        text="Hello draw",
+        x_cm=2.0,
+        y_cm=2.0,
+        w_cm=8.0,
+        h_cm=1.0,
+    )
+    idx = added["index"]
+    shapes = await session.call("draw_list_shapes", doc_id=doc_id, page=0)
+    assert shapes["count"] >= 1
+    assert any(
+        s["index"] == idx and s["text"] == "Hello draw" for s in shapes["shapes"]
+    )
+
+    await session.call(
+        "draw_set_text", doc_id=doc_id, page=0, shape=idx, text="Hello edited"
+    )
+    out = await session.call("draw_get_text", doc_id=doc_id, page=0, shape=idx)
+    assert out["text"] == "Hello edited"
+
+    moved = await session.call(
+        "draw_move_shape", doc_id=doc_id, page=0, shape=idx, dx_cm=1.0, dy_cm=0.5
+    )
+    assert moved["x_cm"] == pytest.approx(3.0)
+    assert moved["y_cm"] == pytest.approx(2.5)
+
+    before = (await session.call("draw_list_shapes", doc_id=doc_id, page=0))["count"]
+    await session.call("draw_delete_shape", doc_id=doc_id, page=0, shape=idx)
+    after = (await session.call("draw_list_shapes", doc_id=doc_id, page=0))["count"]
+    assert after == before - 1

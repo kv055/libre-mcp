@@ -2,8 +2,9 @@
 
 > A stdio MCP server that controls a headless LibreOffice over UNO. Use it to
 > build and export real office deliverables — Writer documents, Calc
-> spreadsheets, and Impress presentations — then save them as PDF, DOCX, XLSX,
-> PPTX, and more. This file is the minimal guide an agent needs to use it.
+> spreadsheets, Impress presentations, and Draw drawings — then save them as
+> PDF, DOCX, XLSX, PPTX, and more. This file is the minimal guide an agent
+> needs to use it.
 
 ## Model
 
@@ -57,6 +58,17 @@ of the slide; colors are hex.
 - `add_shape(doc_id, slide, x, y, w, h, shape?, fill?, fill2?, angle?, corner?, line?, line_width?, text?, text_color?, text_size?, text_bold?)` — `shape` rect|round|ellipse|line; `fill2` makes a gradient; `text` is centered inside
 - `add_image(doc_id, slide, path, x, y, w, h)` — absolute `path`
 
+Draw (for Draw documents: designed CVs, diagrams, posters). Positions/sizes in
+CENTIMETRES from the page's top-left; colors hex; font sizes in points. Shapes
+are 0-based `shape` indexes in z-order on a 0-based `page`; deleting shifts
+later indexes — delete in descending order.
+- `draw_list_shapes(doc_id, page)` → `{page, count, shapes}` — `shapes`: `{index, type, x_cm, y_cm, w_cm, h_cm, text}`; `type` text|rect|ellipse|line|image|path|custom|group|…
+- `draw_get_text(doc_id, page, shape)` → `{shape, text}`
+- `draw_set_text(doc_id, page, shape, text, size?, color?, bold?, italic?, align?, valign?, font?)` — replaces the shape's text runs; omitted style keeps current formatting; `align` left|center|right|justify; `valign` top|center|bottom
+- `draw_delete_shape(doc_id, page, shape)` → `{count}`
+- `draw_move_shape(doc_id, page, shape, dx_cm?, dy_cm?)` → `{shape, x_cm, y_cm}`
+- `draw_add_textbox(doc_id, page, text, x_cm, y_cm, w_cm, h_cm, size?, color?, bold?, italic?, align?, valign?, font?)` → `{index}` — `\n` for line breaks
+
 ## Recipes
 
 Branded one-pager → PDF (header band, heading, body, list, table)
@@ -92,6 +104,18 @@ add_slide         {"doc_id": "doc-1"}
 set_slide_content {"doc_id": "doc-1", "index": 1, "title": "Timeline", "bullets": ["Q1: design", "Q2: build", "Q3: ship"]}
 export_document   {"doc_id": "doc-1", "path": "/abs/path/deck.pptx"}
 ```
+
+Edit a Draw CV → ODG
+```
+open_document     {"path": "/abs/path/cv.odg"}
+draw_list_shapes  {"doc_id": "doc-1", "page": 0}
+draw_set_text     {"doc_id": "doc-1", "page": 0, "shape": 42, "text": "Senior Fullstack Developer"}
+draw_delete_shape {"doc_id": "doc-1", "page": 0, "shape": 43}
+draw_move_shape   {"doc_id": "doc-1", "page": 0, "shape": 44, "dy_cm": -0.45}
+save_document     {"doc_id": "doc-1"}
+```
+List shapes first to learn indexes; when removing several lines, delete in
+descending index order, then move the shapes below up to close the gap.
 
 ## Engaging presentations (patterns)
 
@@ -165,8 +189,9 @@ document kind (Writer/Calc/Impress/Draw):
   bumped on every change (yours or a human's). If you call a mutating tool on a
   doc that changed since you last touched it, the call is REFUSED and returns
   `{conflict: true, warning, rev, seen}` instead of editing. Recover by re-reading
-  the doc (e.g. `get_text`, or `read_cells`) — that resyncs `seen` and shows you
-  the human's change — then retry your edit. Pass `force: true` to override
+  the doc (e.g. `get_text`, `read_cells`, or `draw_get_text`) — that resyncs
+  `seen` and shows you the human's change — then retry your edit. Pass
+  `force: true` to override
   without re-reading (rarely needed; prefer re-reading so you merge, not clobber).
 - **`close_document` refuses on unsaved changes** unless `force: true`. Save
   first (`save_document`) so nothing is silently discarded. `document_info`
@@ -180,7 +205,7 @@ not yet exposed:
 - LibreOffice: https://www.libreoffice.org · Help: https://help.libreoffice.org
 - UNO API reference: https://api.libreoffice.org/docs/idl/ref/index.html
   (Writer `com.sun.star.text`, Calc `com.sun.star.sheet`, Impress
-  `com.sun.star.presentation`)
+  `com.sun.star.presentation`, Draw `com.sun.star.drawing`)
 - Export filter names: https://help.libreoffice.org/latest/en-US/text/shared/guide/convertfilters.html
 - Model Context Protocol: https://modelcontextprotocol.io
 

@@ -1,8 +1,8 @@
 # libre-mcp
 
 A stdio [MCP](https://modelcontextprotocol.io) server for controlling
-**LibreOffice** (Writer, Calc & Impress) from Claude Code and other MCP clients —
-create and edit documents, spreadsheets, and presentations; run formulas; and
+**LibreOffice** (Writer, Calc, Impress & Draw) from Claude Code and other MCP clients —
+create and edit documents, spreadsheets, presentations, and drawings; run formulas; and
 export to PDF, DOCX, XLSX, **PPTX**, and more. macOS and Linux.
 
 Full docs: **[libre-mcp.krondor.org](https://libre-mcp.krondor.org)**
@@ -76,9 +76,9 @@ Paths are auto-discovered; override with `LIBRE_MCP_SOFFICE_PATH` /
 
 ## Usage
 
-Ask your MCP client to work with documents, spreadsheets, or presentations. The
-typical flow is **create/open → edit → export** (e.g. build a deck and save it as
-`.pptx`); documents stay open (referenced by `doc_id`) until closed.
+Ask your MCP client to work with documents, spreadsheets, presentations, or
+drawings. The typical flow is **create/open → edit → export** (e.g. build a deck
+and save it as `.pptx`); documents stay open (referenced by `doc_id`) until closed.
 
 | Tool | Purpose |
 |------|---------|
@@ -108,11 +108,18 @@ typical flow is **create/open → edit → export** (e.g. build a deck and save 
 | `add_textbox(doc_id, slide, text, x, y, w, h, …)` | Positioned, styled text |
 | `add_shape(doc_id, slide, x, y, w, h, shape, fill, …)` | Rect/round/ellipse/line (+ text) |
 | `add_image(doc_id, slide, path, x, y, w, h)` | Place an image on a slide |
+| `draw_list_shapes(doc_id, page)` | List a Draw page's shapes: index, type, cm geometry, text |
+| `draw_get_text(doc_id, page, shape)` | Read one shape's text |
+| `draw_set_text(doc_id, page, shape, text, …)` | Replace a shape's text (keeps style unless restyled) |
+| `draw_delete_shape(doc_id, page, shape)` | Delete a shape (later indices shift down) |
+| `draw_move_shape(doc_id, page, shape, dx_cm?, dy_cm?)` | Shift a shape in centimetres |
+| `draw_add_textbox(doc_id, page, text, x_cm, …)` | Place a styled text box (cm geometry) |
 
 Slide graphics (and Writer page boxes) position by **percent (0-100)** and take
 **hex colors** — enough to build themed, graphic-rich decks *and* branded
-documents (letterheads, reports, one-pagers). Full arguments: the
-[tool reference](https://libre-mcp.krondor.org/docs/tools/).
+documents (letterheads, reports, one-pagers). Draw tools instead use
+**centimetres** for positions and sizes, suited to documents like designed CVs.
+Full arguments: the [tool reference](https://libre-mcp.krondor.org/docs/tools/).
 
 ### Live editing & concurrency
 

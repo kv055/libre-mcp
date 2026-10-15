@@ -57,7 +57,13 @@ async def test_lists_tools_over_stdio():
             tools = await session.list_tools()
             names = {t.name for t in tools.tools}
     # a representative tool from each group must be registered
-    assert {"create_document", "insert_text", "set_cells", "add_slide"} <= names
+    assert {
+        "create_document",
+        "insert_text",
+        "set_cells",
+        "add_slide",
+        "draw_list_shapes",
+    } <= names
 
 
 @requires_lo

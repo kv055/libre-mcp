@@ -1,7 +1,7 @@
 [project]
 name = "libre-mcp"
 version = "0.2.0"
-description = "stdio MCP server for controlling LibreOffice (Writer/Calc) over UNO"
+description = "stdio MCP server for controlling LibreOffice (Writer, Calc, Impress, Draw) over UNO"
 requires-python = ">=3.12"
 dependencies = [
     "mcp>=1.8",

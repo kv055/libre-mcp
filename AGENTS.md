@@ -6,7 +6,7 @@ Guidance for AI agents working in this repository. Human contributors: see
 ## Project
 
 libre-mcp is a stdio MCP server that controls a headless LibreOffice (Writer,
-Calc, Impress) over UNO. Three processes:
+Calc, Impress, Draw) over UNO. Three processes:
 
 - the MCP server (`src/`, Python ≥3.12 + the `mcp` SDK) — owns the stdio channel,
   defines tools, and supervises the others;
@@ -15,7 +15,7 @@ Calc, Impress) over UNO. Three processes:
   LibreOffice's own Python and does the actual document work.
 
 Tools live one group per file under `src/tools/` (document, writer, calc,
-impress), each backed by an `op_*` method in `uno_worker.py`.
+impress, draw), each backed by an `op_*` method in `uno_worker.py`.
 
 ## Setup, build, test
 
