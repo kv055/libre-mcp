@@ -72,7 +72,9 @@ LibreOffice must be installed:
 - **Other Linux (TDF/opt builds):** bundle their own Python — nothing extra.
 
 Paths are auto-discovered; override with `LIBRE_MCP_SOFFICE_PATH` /
-`LIBRE_MCP_PYTHON_PATH` if LibreOffice lives somewhere unusual.
+`LIBRE_MCP_PYTHON_PATH` if LibreOffice lives somewhere unusual. All settings are
+validated at startup — invalid values (bad ports, timeouts, paths) fail fast with a
+clear error instead of being silently ignored.
 
 ## Usage
 
