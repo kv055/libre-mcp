@@ -8,7 +8,8 @@ hot-reload.** The committed `.mcp.json` registers two servers:
 - **`libre-dev`** — `./bin/run.sh --dev --live`, run from your working tree
   (`uv run libre-mcp`) over stdio. **Use this while developing**: `--dev` adds
   debug logging + hot-reload (below) and `--live` opens a **visible LibreOffice
-  window** so you can watch documents being built. The two flags are independent.
+  window** so you can watch documents being built (`--headless` forces no
+  window even with a display). The two flags are independent.
 
 ```bash
 git clone https://github.com/krondor-corp/libre-mcp
@@ -40,9 +41,13 @@ A **brand-new tool group file** (a new `src/tools/<x>.py`) still needs a restart
 
 `--live` (env `LIBRE_MCP_LIVE=1`) launches soffice **non-headless** and pops each
 open document into a real LibreOffice window, so you watch the agent build it in
-real time instead of export → read-PDF. It needs a display, so it's a local-dev
-aid only — the shipped binary and CI always run headless. `--live` is independent
-of `--dev`; the committed `.mcp.json` turns both on for `libre-dev`.
+real time instead of export → read-PDF. MCP hosts spawn the server with a
+stripped environment, so before launching, the server rediscovers the desktop
+session (Wayland socket, compositor instance) from the runtime dir on its own
+(`src/office/display.py`). Where no display is reachable at all (CI, SSH), it
+falls back to headless with a warning instead of failing. `bin/run.sh --headless`
+forces headless even with a display. `--live` is independent of `--dev`; the
+committed `.mcp.json` turns both on for `libre-dev`.
 
 ## Commands
 
@@ -65,6 +70,12 @@ Live integration tests run only when LibreOffice is found, otherwise they skip
 (the tool-listing test always runs). For interactive poking, use the registered
 `libre` MCP server in Claude Code, or `make inspect` (the MCP Inspector).
 
+`scripts/live_smoke.py` is the manual live gate (needs a display, ~75s, not in
+`make check`): it launches a session with a stripped host env, asserts soffice
+reconstructs the desktop session itself, round-trips text, idles 60s, then
+proves the bridge survived. `MODE=FULLENV` keeps the ambient display env as a
+control; `MODE=FALLBACK` asserts headless degradation with no display.
+
 ## Configuration
 
 | Env var | Default | Meaning |
@@ -72,6 +83,6 @@ Live integration tests run only when LibreOffice is found, otherwise they skip
 | `LIBRE_MCP_SOFFICE_PATH` | auto | soffice binary override |
 | `LIBRE_MCP_PYTHON_PATH` | auto | LibreOffice python override |
 | `LIBRE_MCP_LOG_LEVEL` | `INFO` | stderr log level (`DEBUG` enables hot-reload) |
-| `LIBRE_MCP_LIVE` | `false` | run a visible LibreOffice window (needs a display) |
+| `LIBRE_MCP_LIVE` | `false` | run a visible LibreOffice window (headless fallback when no display) |
 
 See [RELEASES.md](RELEASES.md) for the release process.

@@ -1,9 +1,14 @@
-"""Supervise a headless soffice process listening for UNO connections.
+"""Supervise a soffice process listening for UNO connections.
 
 Each instance gets an isolated UserInstallation profile and a UNIQUE named pipe.
 Named pipes (rather than TCP ports) make concurrent instances collision-proof:
 there is no shared port to race over, which matters for parallel-worktree dev.
 Instances are disposable: on death we relaunch rather than revive a hung bridge.
+
+Live mode runs soffice visibly; the display environment is recovered from
+the desktop session first, since MCP hosts spawn the server with sanitized
+variables. With no display anywhere (CI, SSH), live mode falls back to
+headless with a warning instead of failing.
 """
 
 import asyncio
@@ -13,6 +18,7 @@ import subprocess
 import uuid
 
 from src.log import get_logger
+from src.office.display import ensure_display
 
 log = get_logger(__name__)
 
@@ -50,7 +56,21 @@ class SofficeProcess:
         os.makedirs(self.profile, exist_ok=True)
         accept = f"pipe,name={self.pipe_name};urp;StarOffice.ComponentContext"
         # Live mode shows a real window; otherwise run headless/invisible.
-        window = [] if self.visible else ["--headless", "--invisible"]
+        # Without any display (CI, SSH), live degrades to headless with a
+        # warning instead of launching a window that can never appear.
+        visible = self.visible
+        if visible:
+            info = ensure_display()
+            if info.kind == "none":
+                log.warning(
+                    "live mode requested but no display found (%s); "
+                    "falling back to headless",
+                    info.detail,
+                )
+                visible = False
+            else:
+                log.info("live mode on %s (%s)", info.kind, info.detail)
+        window = [] if visible else ["--headless", "--invisible"]
         args = [
             self.soffice_path,
             *window,

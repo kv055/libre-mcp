@@ -5,15 +5,18 @@
 #   bin/run.sh           plain run (INFO logging)
 #   bin/run.sh --dev     debug logging + kept profile + hot-reload of uno_worker.py
 #   bin/run.sh --live    run a VISIBLE LibreOffice window so edits are watchable
+#   bin/run.sh --headless  no window even with a display (CI)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DEV=0
 LIVE=0
+HEADLESS=0
 for arg in "$@"; do
   [ "$arg" = "--dev" ] && DEV=1
   [ "$arg" = "--live" ] && LIVE=1
+  [ "$arg" = "--headless" ] && HEADLESS=1
 done
 
 if [ "$DEV" = "1" ]; then
@@ -23,6 +26,9 @@ if [ "$DEV" = "1" ]; then
 fi
 if [ "$LIVE" = "1" ]; then
   export LIBRE_MCP_LIVE=1
+fi
+if [ "$HEADLESS" = "1" ]; then
+  export LIBRE_MCP_LIVE=0
 fi
 
 source "$SCRIPT_DIR/env.sh"
