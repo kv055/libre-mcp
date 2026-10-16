@@ -63,8 +63,8 @@ class Config:
     debug: bool
 
     # live mode — run a VISIBLE LibreOffice window and show documents in it, so
-    # edits are watchable in real time. Falls back to headless when no display
-    # is reachable.
+    # edits are watchable in real time. On by default; falls back to headless
+    # when no display is reachable. Set LIBRE_MCP_LIVE=0 to force headless (CI).
     live: bool
 
     def __str__(self) -> str:
@@ -96,4 +96,4 @@ class Config:
 
         self.debug = self.log_level == "DEBUG"
 
-        self.live = _bool("LIBRE_MCP_LIVE", False)
+        self.live = _bool("LIBRE_MCP_LIVE", True)

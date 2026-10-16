@@ -131,12 +131,13 @@ Full arguments: the [tool reference](https://libre-mcp.krondor.org/docs/tools/).
 ### Live editing & concurrency
 
 The server drives **one** LibreOffice in an isolated profile — its own
-process, separate from your everyday LibreOffice. Live mode shows a real,
-visible window, so agent edits are watchable (`bin/run.sh --live`,
-`LIBRE_MCP_LIVE=1`). MCP hosts spawn the server with a stripped environment,
-so before launching, the server rediscovers the desktop session (Wayland
-socket, compositor instance) on its own; where no display is reachable at
-all (CI, SSH), it falls back to headless with a warning instead of failing.
+process, separate from your everyday LibreOffice. It launches **live by
+default**: a real, visible window, so agent edits are watchable with no
+flags. MCP hosts spawn the server with a stripped environment, so before
+launching, the server rediscovers the desktop session (Wayland socket,
+compositor instance) on its own; where no display is reachable at all (CI,
+SSH), it falls back to headless with a warning instead of failing.
+`LIBRE_MCP_LIVE=0` (`bin/run.sh --headless`) forces headless.
 
 That has two consequences worth knowing:
 

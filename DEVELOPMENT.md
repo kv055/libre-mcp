@@ -7,9 +7,9 @@ hot-reload.** The committed `.mcp.json` registers two servers:
   or `install.sh` first).
 - **`libre-dev`** — `./bin/run.sh --dev --live`, run from your working tree
   (`uv run libre-mcp`) over stdio. **Use this while developing**: `--dev` adds
-  debug logging + hot-reload (below) and `--live` opens a **visible LibreOffice
-  window** so you can watch documents being built (`--headless` forces no
-  window even with a display). The two flags are independent.
+  debug logging + hot-reload (below); the window is **visible by default** so
+  you can watch documents being built (`--live` is kept for compatibility,
+  `--headless` forces no window). The two flags are independent.
 
 ```bash
 git clone https://github.com/krondor-corp/libre-mcp
@@ -39,14 +39,14 @@ A **brand-new tool group file** (a new `src/tools/<x>.py`) still needs a restart
 
 ## Live mode
 
-`--live` (env `LIBRE_MCP_LIVE=1`) launches soffice **non-headless** and each
-open document pops into a real LibreOffice window, so you watch the agent
-build it in real time instead of export → read-PDF. MCP hosts spawn the
-server with a stripped environment, so before launching, the server
-rediscovers the desktop session (Wayland socket, compositor instance) from
-the runtime dir on its own (`src/office/display.py`). Where no display is
-reachable at all (CI, SSH), it falls back to headless with a warning instead
-of failing. `bin/run.sh --headless` forces headless even with a display.
+Live is the **default** (`LIBRE_MCP_LIVE=1`; `bin/run.sh --headless` forces
+headless): soffice launches **non-headless** and each open document pops into a
+real LibreOffice window, so you watch the agent build it in real time instead of
+export → read-PDF. MCP hosts spawn the server with a stripped environment, so
+before launching, the server rediscovers the desktop session (Wayland socket,
+compositor instance) from the runtime dir on its own (`src/office/display.py`).
+Where no display is reachable at all (CI, SSH), it falls back to headless with
+a warning instead of failing.
 
 A fatal doc error (e.g. `DisposedException`) first probes bridge health via
 `ping` (which touches the desktop, so it proves the URP bridge is up): if
@@ -91,6 +91,6 @@ control; `MODE=FALLBACK` asserts headless degradation with no display.
 | `LIBRE_MCP_SOFFICE_PATH` | auto | soffice binary override |
 | `LIBRE_MCP_PYTHON_PATH` | auto | LibreOffice python override |
 | `LIBRE_MCP_LOG_LEVEL` | `INFO` | stderr log level (`DEBUG` enables hot-reload) |
-| `LIBRE_MCP_LIVE` | `false` | run a visible LibreOffice window (headless fallback when no display) |
+| `LIBRE_MCP_LIVE` | `true` | run a visible LibreOffice window (headless fallback when no display) |
 
 See [RELEASES.md](RELEASES.md) for the release process.

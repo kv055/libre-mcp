@@ -2,9 +2,9 @@
 # Run the libre-mcp stdio server — the command .mcp.json points at.
 # stdout is the JSON-RPC channel; env setup is delegated to env.sh (stdout-clean).
 #
-#   bin/run.sh           plain run (INFO logging)
+#   bin/run.sh           plain run (INFO logging, live window by default)
 #   bin/run.sh --dev     debug logging + kept profile + hot-reload of uno_worker.py
-#   bin/run.sh --live    run a VISIBLE LibreOffice window so edits are watchable
+#   bin/run.sh --live    explicit live window (default; kept for compatibility)
 #   bin/run.sh --headless  no window even with a display (CI)
 set -euo pipefail
 
