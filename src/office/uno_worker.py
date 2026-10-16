@@ -172,6 +172,12 @@ class _RevListener(unohelper.Base, XModifyListener):
         pass
 
 
+# _show() retry budget: a frame fresh off the loader is sometimes not
+# realizable the very instant loading returns.
+_SHOW_ATTEMPTS = 10
+_SHOW_RETRY_DELAY = 0.2
+
+
 class Worker:
     def __init__(self, url: str) -> None:
         self.url = url
@@ -198,12 +204,31 @@ class Worker:
         return False if show is None else not show
 
     def _show(self, doc):
+        """Map the document window, retrying briefly: a frame fresh off the
+        loader is sometimes not realizable the very instant loading
+        returns, and one swallowed failure leaves live mode windowless
+        forever. Never raises — a visibility failure must not fail the
+        open — but it is logged loudly instead of being swallowed.
+
+        Deliberately no toFront(): on Wayland it disposes the URP bridge
+        (every later op on the connection then fails with
+        DisposedException) while the compositor owns focus anyway;
+        setVisible alone maps the window.
+        """
         try:
             win = doc.getCurrentController().getFrame().getContainerWindow()
-            win.setVisible(True)
-            win.toFront()
-        except Exception:
-            pass
+        except Exception as e:
+            eprint(f"_show: no container window: {e}")
+            return
+        last = None
+        for _ in range(_SHOW_ATTEMPTS):
+            try:
+                win.setVisible(True)
+                return
+            except Exception as e:  # window not realizable yet; retry
+                last = e
+                time.sleep(_SHOW_RETRY_DELAY)
+        eprint(f"_show: setVisible failed after retries: {last}")
 
     # -- connection -------------------------------------------------------
     def connect(self, timeout: float = 30.0, delay: float = 0.5) -> None:
@@ -399,7 +424,15 @@ class Worker:
 
     # -- operations -------------------------------------------------------
     def op_ping(self, args):
-        return {"pong": True}
+        # Touch the desktop, not just the stdio pipe: ping doubles as the
+        # bridge-health probe the session uses to tell a dead bridge (tear
+        # the session down) from a merely closed document (leave it up).
+        enum = self.desktop.getComponents().createEnumeration()
+        count = 0
+        while enum.hasMoreElements():
+            enum.nextElement()
+            count += 1
+        return {"pong": True, "components": count}
 
     def op_create_document(self, args):
         kind = args.get("kind", "writer")
@@ -472,6 +505,8 @@ class Worker:
         }
 
     def op_close_document(self, args):
+        from com.sun.star.util import CloseVetoException
+
         doc_id = args["doc_id"]
         doc = self._doc(doc_id)
         # Closing discards unsaved changes. Refuse if the document has been
@@ -486,8 +521,15 @@ class Worker:
                 ),
                 "modified": True,
             }
+        try:
+            doc.close(False)
+        except CloseVetoException:
+            if not args.get("force"):
+                raise
+            # Vetoed (e.g. a stuck confirmation dialog on the frame): force
+            # bypasses the controller and disposes the model directly.
+            doc.dispose()
         self._untrack(doc, doc_id)
-        doc.close(False)
         del self.docs[doc_id]
         return {"closed": doc_id}
 

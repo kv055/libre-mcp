@@ -33,6 +33,8 @@ async def session(tmp_path):
     config = Config()
     config.profile_dir = str(tmp_path / "profiles")
     config.keep_profile = False
+    # Live mode is the default, but tests must not pop windows.
+    config.live = False
     s = OfficeSession(config)
     try:
         yield s
@@ -254,8 +256,9 @@ async def test_session_retry_skips_doomed_doc_calls(session):
         }
         assert mocked.call_count == 3
     # Doc ops surface the original fatal error instead of retrying against
-    # dropped doc handles.
+    # dropped doc handles (the failed op plus the bridge-health probe, which
+    # also fails here, so the session tears down).
     with patch.object(WorkerClient, "call", new=AsyncMock(side_effect=fatal)) as mocked:
         with pytest.raises(WorkerError, match="boom"):
             await session.call("get_text", doc_id=doc_id)
-        assert mocked.call_count == 1
+        assert mocked.call_count == 2

@@ -63,7 +63,8 @@ class Config:
     debug: bool
 
     # live mode — run a VISIBLE LibreOffice window and show documents in it, so
-    # edits are watchable in real time (local demo; not for the shipped server)
+    # edits are watchable in real time. Falls back to headless when no display
+    # is reachable.
     live: bool
 
     def __str__(self) -> str:
