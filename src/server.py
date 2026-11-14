@@ -15,6 +15,7 @@ from src.config import Config
 from src.log import get_logger
 from src.office import discovery
 from src.office.session import get_session
+from src.office.soffice import reap_stale_profiles
 from src.tools import calc, document, draw, impress, writer
 
 log = get_logger(__name__)
@@ -111,6 +112,12 @@ def create_server(config: Config | None = None) -> FastMCP:
         watcher = (
             asyncio.create_task(_watch_and_reload(_server)) if config.debug else None
         )
+        # A killed server never tears down: release what earlier instances
+        # left behind (lock files next to their documents, profiles).
+        try:
+            reap_stale_profiles(config.profile_dir, config.keep_profile)
+        except Exception as e:
+            log.error("reaping stale profiles failed: %s", e)
         try:
             yield {}
         finally:

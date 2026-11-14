@@ -353,3 +353,141 @@ async def test_nonfatal_error_raises_without_teardown(monkeypatch):
         await session.call("get_text", doc_id="doc-1")
     assert events == ["ensure"]
     assert session._worker is not None
+
+
+# -- stale lock files ------------------------------------------------------
+
+
+def _instance(profile_dir, pid, docs=()):
+    """A profile as a server instance leaves it, with `docs` recorded as
+    opened and each one locked by that instance."""
+    from src.office.soffice import OPENED_FILE, lock_file_for
+
+    profile = profile_dir / f"instance-libre_mcp_{pid}_0123456789ab"
+    profile.mkdir()
+    (profile / OPENED_FILE).write_text("".join(f"{d}\n" for d in docs))
+    for d in docs:
+        d.write_text("doc")
+        with open(lock_file_for(str(d)), "w") as f:
+            f.write(f",me,host,10.11.2026 16:00,file://{profile};")
+    return profile
+
+
+def _dead_pid():
+    import subprocess
+
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    return proc.pid
+
+
+def test_release_locks_only_removes_own(tmp_path):
+    from src.office.soffice import lock_file_for, release_locks
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    own, foreign = docs / "own.ods", docs / "foreign.ods"
+    profile = _instance(tmp_path, 1, [own, foreign])
+    # someone else's LibreOffice holds `foreign` now
+    with open(lock_file_for(str(foreign)), "w") as f:
+        f.write(",me,host,10.11.2026 16:00,file:///home/me/.config/libreoffice/4;")
+    # locked by this instance, but never recorded as opened
+    stray = docs / "stray.odt"
+    with open(lock_file_for(str(stray)), "w") as f:
+        f.write(f",me,host,10.11.2026 16:00,file://{profile};")
+
+    removed = release_locks(str(profile))
+
+    assert removed == [lock_file_for(str(own))]
+    assert not os.path.exists(lock_file_for(str(own)))
+    assert os.path.exists(lock_file_for(str(foreign)))
+    assert os.path.exists(lock_file_for(str(stray)))
+
+
+def test_release_locks_without_record_is_noop(tmp_path):
+    from src.office.soffice import release_locks
+
+    assert release_locks(str(tmp_path / "instance-libre_mcp_1_0123456789ab")) == []
+
+
+def test_reap_releases_dead_instances_only(tmp_path):
+    from src.office.soffice import lock_file_for, reap_stale_profiles
+
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    dead_doc, live_doc = tmp_path / "dead.ods", tmp_path / "live.ods"
+    dead = _instance(profiles, _dead_pid(), [dead_doc])
+    live = _instance(profiles, os.getpid(), [live_doc])
+    unrelated = profiles / "something-else"
+    unrelated.mkdir()
+
+    reap_stale_profiles(str(profiles))
+
+    assert not dead.exists()
+    assert not os.path.exists(lock_file_for(str(dead_doc)))
+    assert live.exists()
+    assert os.path.exists(lock_file_for(str(live_doc)))
+    assert unrelated.exists()
+
+
+def test_reap_spares_orphaned_soffice(tmp_path):
+    import subprocess
+
+    from src.office.soffice import lock_file_for, reap_stale_profiles
+
+    doc = tmp_path / "open.ods"
+    profile = _instance(tmp_path, _dead_pid(), [doc])
+    # the server died, but a process still runs with this profile
+    orphan = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)", str(profile)]
+    )
+    try:
+        reap_stale_profiles(str(tmp_path))
+    finally:
+        orphan.kill()
+        orphan.wait()
+
+    assert profile.exists()
+    assert os.path.exists(lock_file_for(str(doc)))
+
+
+def test_reap_keeps_profile_when_asked(tmp_path):
+    from src.office.soffice import lock_file_for, reap_stale_profiles
+
+    doc = tmp_path / "kept.ods"
+    profile = _instance(tmp_path, _dead_pid(), [doc])
+
+    reap_stale_profiles(str(tmp_path), keep_profile=True)
+
+    assert profile.exists()
+    assert not os.path.exists(lock_file_for(str(doc)))
+
+
+async def test_stop_releases_locks_of_recorded_documents(tmp_path):
+    from src.office.soffice import SofficeProcess, lock_file_for
+
+    soffice = SofficeProcess("soffice", "libre_mcp_1_0123456789ab", str(tmp_path))
+    os.makedirs(soffice.profile)
+    doc = tmp_path / "report.odt"
+    doc.write_text("doc")
+    soffice.record_opened(str(doc))
+    with open(lock_file_for(str(doc)), "w") as f:
+        f.write(f",me,host,10.11.2026 16:00,file://{soffice.profile};")
+
+    await soffice.stop()
+
+    assert not os.path.exists(lock_file_for(str(doc)))
+    assert not os.path.exists(soffice.profile)
+    assert doc.exists()
+
+
+async def test_session_records_opened_documents(monkeypatch):
+    session, _ = _stub_session(
+        monkeypatch, [{"doc_id": "doc-1", "kind": "calc", "path": "/d/a.ods"}]
+    )
+    opened = []
+    session._soffice = types.SimpleNamespace(record_opened=opened.append)
+
+    await session.call("open_document", path="/d/a.ods")
+
+    assert opened == ["/d/a.ods"]

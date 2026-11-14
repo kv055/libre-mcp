@@ -153,6 +153,12 @@ That has two consequences worth knowing:
   edit a document you changed since the agent last looked is **refused with a
   conflict warning** until the agent re-reads it. Likewise `close_document`
   refuses to discard unsaved changes unless you pass `force`.
+- **No stale lock files.** Documents the server opens keep LibreOffice's usual
+  `.~lock.<name>#` file while open, so your own LibreOffice still warns that the
+  file is in use. When the server stops, it removes the lock files of documents
+  it opened; if it was killed instead, the next server start does. Only lock
+  files naming the server's own profile are removed. This matters for synced
+  folders: Nextcloud locks a file on the server while its lock file exists.
 
 ## Links
 

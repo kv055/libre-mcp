@@ -86,6 +86,13 @@ class OfficeSession:
             self._soffice = None
 
     async def call(self, op: str, **args) -> dict:
+        result = await self._call(op, **args)
+        if op == "open_document" and self._soffice:
+            # recorded so the lock file can be released if we die holding it
+            self._soffice.record_opened(result.get("path") or args["path"])
+        return result
+
+    async def _call(self, op: str, **args) -> dict:
         await self._ensure_started()
         assert self._worker
         try:
